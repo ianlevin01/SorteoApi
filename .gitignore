@@ -1,0 +1,21 @@
+node_modules/
+
+# Variables de entorno (nunca commitear)
+.env
+.env.*
+!.env.example
+
+# Logs / PM2
+*.log
+logs/
+.pm2/
+
+# Claves / certificados
+*.pem
+*.key
+
+# Sistema / editores
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

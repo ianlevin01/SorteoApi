@@ -1,0 +1,40 @@
+{
+  "name": "sorteo-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "setup:aws": "node scripts/setup-aws.js",
+    "create-tables": "node scripts/create-tables.js",
+    "create-bucket": "node scripts/create-bucket.js",
+    "make-admin": "node scripts/make-admin.js",
+    "seed": "node scripts/seed.js",
+    "wipe-data": "node scripts/wipe-data.js",
+    "reset": "node scripts/wipe-data.js && node scripts/seed.js",
+    "seed-demo": "node scripts/seed-demo.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.706.0",
+    "@aws-sdk/client-s3": "^3.706.0",
+    "@aws-sdk/lib-dynamodb": "^3.706.0",
+    "@aws-sdk/s3-request-presigner": "^3.706.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.1",
+    "openai": "^4.104.0",
+    "ulid": "^2.3.0",
+    "zod": "^3.24.1"
+  }
+}
