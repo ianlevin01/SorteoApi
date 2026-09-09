@@ -86,7 +86,7 @@ Completá (ver `.env.example` para la lista completa):
 ```ini
 NODE_ENV=production
 PORT=4001
-CORS_ORIGIN=https://TU-DOMINIO-FRONT.com
+CORS_ORIGIN=https://renattosorteo.com
 
 JWT_SECRET=<pegar el que te paso, largo y aleatorio>
 JWT_EXPIRES_IN=30d
@@ -139,7 +139,6 @@ curl -s http://localhost:4001/health
 
 ```bash
 sudo cp ~/sorteo-api/docs/deploy/nginx-api.conf /etc/nginx/sites-available/sorteo-api
-sudo nano /etc/nginx/sites-available/sorteo-api      # reemplazar api.TU-DOMINIO.com
 sudo ln -s /etc/nginx/sites-available/sorteo-api /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
@@ -149,13 +148,13 @@ sudo nginx -t && sudo systemctl reload nginx
 > Elastic IP (paso de DNS).
 
 ```bash
-sudo certbot --nginx -d api.TU-DOMINIO.com --redirect -m tu-email@ejemplo.com --agree-tos -n
+sudo certbot --nginx -d renattosorteo.online --redirect -m TU-EMAIL@ejemplo.com --agree-tos -n
 ```
 
 Probá desde afuera:
 
 ```bash
-curl -s https://api.TU-DOMINIO.com/health
+curl -s https://renattosorteo.online/health
 ```
 
 ---
