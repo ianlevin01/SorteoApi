@@ -5,6 +5,7 @@ import {
   createRaffle,
   updateRaffle,
 } from '../repositories/raffleRepository.js';
+import { listTicketsByRaffle } from '../repositories/ticketRepository.js';
 import { notFound, badRequest } from '../lib/errors.js';
 import { newRaffleId, slugify } from '../lib/ids.js';
 
@@ -72,6 +73,28 @@ export async function adminGetRaffle(raffleId) {
   const r = await getRaffle(raffleId);
   if (!r) throw notFound('Sorteo no encontrado');
   return r;
+}
+
+/** Métricas de un sorteo para el panel. */
+export async function adminRaffleStats(raffleId) {
+  const raffle = await getRaffle(raffleId);
+  if (!raffle) throw notFound('Sorteo no encontrado');
+
+  const tickets = await listTicketsByRaffle(raffleId);
+  const participants = new Set(tickets.map((t) => t.dni)).size;
+
+  return {
+    raffleId,
+    status: raffle.status,
+    totalNumbers: raffle.totalNumbers ?? null,
+    numbersAssigned: raffle.assignedCount || 0, // entregados (incluye no pagados)
+    numbersConfirmed: raffle.confirmedChances || 0, // con pago confirmado
+    participants, // personas distintas con al menos un número (incluye pendientes)
+    progress:
+      raffle.totalNumbers
+        ? Math.min(100, Math.round(((raffle.assignedCount || 0) / raffle.totalNumbers) * 100))
+        : null,
+  };
 }
 
 export async function adminCreateRaffle(input) {

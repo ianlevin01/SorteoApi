@@ -14,6 +14,7 @@
     "setup:aws": "node scripts/setup-aws.js",
     "create-tables": "node scripts/create-tables.js",
     "create-bucket": "node scripts/create-bucket.js",
+    "create-media-bucket": "node scripts/create-media-bucket.js",
     "make-admin": "node scripts/make-admin.js",
     "seed": "node scripts/seed.js",
     "wipe-data": "node scripts/wipe-data.js",

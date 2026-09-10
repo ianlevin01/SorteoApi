@@ -41,6 +41,13 @@ export const env = {
     receiptsPrefix: process.env.S3_RECEIPTS_PREFIX || 'receipts/',
   },
 
+  // Bucket PUBLICO para imagenes de premios y ganadores (se ven en el sitio).
+  media: {
+    bucket: process.env.MEDIA_BUCKET || undefined,
+    prefix: process.env.MEDIA_PREFIX || 'img/',
+    publicBaseUrl: process.env.MEDIA_PUBLIC_BASE_URL || undefined,
+  },
+
   payment: {
     alias: process.env.PAYMENT_ALIAS || '',
     cbu: process.env.PAYMENT_CBU || '',

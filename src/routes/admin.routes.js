@@ -1,17 +1,37 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAdmin } from '../middleware/auth.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { validate } from '../lib/validate.js';
-import { notFound } from '../lib/errors.js';
+import { notFound, badRequest } from '../lib/errors.js';
 import { createRaffleSchema, updateRaffleSchema } from '../schemas/raffle.schema.js';
 import { rejectOrderSchema } from '../schemas/order.schema.js';
 import * as raffleService from '../services/raffleService.js';
 import * as orderService from '../services/orderService.js';
 import * as ticketService from '../services/ticketService.js';
-import { receiptViewUrl } from '../services/storageService.js';
+import { receiptViewUrl, uploadMedia, IMAGE_MIME_TYPES } from '../services/storageService.js';
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (IMAGE_MIME_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(badRequest('La imagen debe ser JPG, PNG o WEBP'));
+  },
+});
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
+
+// ---- Imágenes (premios / ganadores) ----
+adminRouter.post(
+  '/media',
+  imageUpload.single('image'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw badRequest('Adjuntá una imagen');
+    res.status(201).json(await uploadMedia({ file: req.file, folder: req.query.folder }));
+  }),
+);
 
 // ---- Sorteos ----
 adminRouter.get(
@@ -41,6 +61,13 @@ adminRouter.patch(
   validate(updateRaffleSchema),
   asyncHandler(async (req, res) => {
     res.json(await raffleService.adminUpdateRaffle(req.params.raffleId, req.valid.body));
+  }),
+);
+
+adminRouter.get(
+  '/raffles/:raffleId/stats',
+  asyncHandler(async (req, res) => {
+    res.json(await raffleService.adminRaffleStats(req.params.raffleId));
   }),
 );
 
