@@ -87,11 +87,18 @@ export function assertConfigured({ needBucket = false } = {}) {
   if (needBucket && !env.s3.bucket) missing.push('S3_BUCKET');
 
   if (isProd) {
+    // obligatorias: sin esto la app no funciona
     if (env.jwtSecret === 'dev-insecure-secret') missing.push('JWT_SECRET');
     if (!env.s3.bucket) missing.push('S3_BUCKET');
-    if (!env.payment.alias) missing.push('PAYMENT_ALIAS');
     if (!env.corsOrigin.length || env.corsOrigin.some((o) => o.includes('localhost'))) {
       missing.push('CORS_ORIGIN (dominio real del frontend)');
+    }
+    // avisos: la app arranca igual
+    if (!env.payment.alias) {
+      console.warn('[env] PAYMENT_ALIAS sin configurar: el checkout no muestra dónde transferir.');
+    }
+    if (!env.openai.apiKey) {
+      console.warn('[env] OPENAI_API_KEY sin configurar: los comprobantes van a revisión manual.');
     }
   }
 
