@@ -18,6 +18,7 @@ const TICKET_STATUS_BY_ORDER = {
   approved: 'confirmed',
   rejected: 'rejected',
   cancelled: 'void',
+  expired: 'void', // (solo "elegí tu número") se venció el tiempo para pagar
   failed: 'void',
 };
 
@@ -93,6 +94,10 @@ export async function getMyRaffleTickets(dni, raffleId) {
   return {
     raffle: publicRaffle(raffle),
     tickets: tickets
+      // En sorteos "elegí tu número" cada tap crea un ticket suelto sin
+      // `orderId` (reserva de 30 min, todavía no es una compra). No es un
+      // número "mío" para la billetera hasta que forma parte de una orden.
+      .filter((t) => t.orderId)
       .map((t) => ({
         number: t.number,
         verificationCode: t.verificationCode,

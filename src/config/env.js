@@ -69,6 +69,12 @@ export const env = {
     maxAttempts: Number(process.env.RECEIPT_CHECK_MAX_ATTEMPTS || 3),
     maxAgeDays: Number(process.env.RECEIPT_CHECK_MAX_AGE_DAYS || 10),
   },
+
+  // Sorteos "elegí tu número": minutos que se reserva un número al tocarlo.
+  pickReservationMinutes: Number(process.env.PICK_RESERVATION_MINUTES || 30),
+  // Mientras el comprobante está en revisión manual, el número se sostiene
+  // (no vuelve a estar disponible) por esta cantidad de horas.
+  pickReviewHoldHours: Number(process.env.PICK_REVIEW_HOLD_HOURS || 72),
 };
 
 export const isProd = env.nodeEnv === 'production';

@@ -1,5 +1,8 @@
 import {
   GetCommand,
+  PutCommand,
+  DeleteCommand,
+  UpdateCommand,
   QueryCommand,
   BatchWriteCommand,
   TransactWriteCommand,
@@ -7,6 +10,7 @@ import {
 import { ddb } from '../config/aws.js';
 import { TABLES, INDEXES } from '../config/tables.js';
 import { newVerificationCode } from '../lib/ids.js';
+import { conflict } from '../lib/errors.js';
 
 // 'number' es palabra reservada en DynamoDB -> siempre via alias #n en expresiones.
 const OWNER_SORT_WIDTH = 12;
@@ -128,4 +132,222 @@ export async function listTicketsByRaffle(raffleId) {
     }),
   );
   return Items || [];
+}
+
+// ==================== Sorteos "elegí tu número" ====================
+//
+// Cada número se reserva individualmente al tocarlo, con una condición
+// atómica: solo se puede "pisar" un ticket si no existe, o si existe pero
+// no está confirmado (pagado) Y su reserva ya venció. Eso da la garantía
+// dura de que dos personas nunca terminan con el mismo número, sin
+// necesitar ningún job de limpieza (la expiración se resuelve sola en el
+// momento en que alguien intenta reservar de nuevo ese número).
+
+/** Reserva UN número para `dni` por `minutes` minutos. Tira `conflict` si no se puede. */
+export async function reserveNumber({ raffleId, number, dni, holderName, minutes }) {
+  const now = new Date();
+  const reservedUntil = new Date(now.getTime() + minutes * 60000).toISOString();
+  const item = {
+    raffleId,
+    number,
+    dni,
+    holderName: holderName || null,
+    verificationCode: newVerificationCode(),
+    confirmed: false,
+    reservedUntil,
+    gsi1sk: ownerSortKey(raffleId, number),
+    createdAt: now.toISOString(),
+    // `orderId` se agrega recien cuando se confirma la compra (buildOrderFromReservations).
+  };
+  try {
+    await ddb.send(
+      new PutCommand({
+        TableName: TABLES.tickets,
+        Item: item,
+        ConditionExpression:
+          'attribute_not_exists(raffleId) OR (confirmed = :false AND reservedUntil < :now)',
+        ExpressionAttributeValues: { ':false': false, ':now': now.toISOString() },
+      }),
+    );
+  } catch (err) {
+    if (err.name === 'ConditionalCheckFailedException') {
+      throw conflict('Ese número ya no está disponible. Elegí otro.');
+    }
+    throw err;
+  }
+  return item;
+}
+
+/** Libera una reserva propia (el usuario deselecciona el número antes de pagar). */
+export async function releaseReservation({ raffleId, number, dni }) {
+  try {
+    await ddb.send(
+      new DeleteCommand({
+        TableName: TABLES.tickets,
+        Key: { raffleId, number },
+        ConditionExpression:
+          'dni = :dni AND confirmed = :false AND attribute_not_exists(orderId)',
+        ExpressionAttributeValues: { ':dni': dni, ':false': false },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (err.name === 'ConditionalCheckFailedException') return false;
+    throw err;
+  }
+}
+
+/** Números tomados (confirmados o reservados y vigentes) en un rango [from, to]. */
+export async function listUnavailableInRange(raffleId, from, to) {
+  const { Items } = await ddb.send(
+    new QueryCommand({
+      TableName: TABLES.tickets,
+      KeyConditionExpression: 'raffleId = :r AND #n BETWEEN :from AND :to',
+      ExpressionAttributeNames: { '#n': 'number' },
+      ExpressionAttributeValues: { ':r': raffleId, ':from': from, ':to': to },
+    }),
+  );
+  const nowIso = new Date().toISOString();
+  return (Items || [])
+    .filter((t) => t.confirmed || (t.reservedUntil && t.reservedUntil > nowIso))
+    .map((t) => t.number);
+}
+
+/** Reservas "crudas" (sin orden todavía) que sigue teniendo `dni` en un sorteo. */
+export async function listMyActiveReservations(dni, raffleId) {
+  const tickets = await listTicketsByOwner(dni, raffleId);
+  const nowIso = new Date().toISOString();
+  return tickets.filter((t) => !t.orderId && !t.confirmed && t.reservedUntil > nowIso);
+}
+
+/**
+ * Convierte las reservas sueltas de `numbers` en parte de una orden.
+ * Atómico: si alguna ya no es válida (venció / la tomó otra persona), no se
+ * confirma ninguna.
+ */
+export async function attachReservationsToOrder({ raffleId, numbers, dni, orderId }) {
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new TransactWriteCommand({
+        TransactItems: numbers.map((number) => ({
+          Update: {
+            TableName: TABLES.tickets,
+            Key: { raffleId, number },
+            UpdateExpression: 'SET orderId = :orderId',
+            ConditionExpression:
+              'dni = :dni AND confirmed = :false AND attribute_not_exists(orderId) AND reservedUntil > :now',
+            ExpressionAttributeValues: {
+              ':orderId': orderId,
+              ':dni': dni,
+              ':false': false,
+              ':now': now,
+            },
+          },
+        })),
+      }),
+    );
+  } catch (err) {
+    if (err.name === 'TransactionCanceledException') {
+      throw conflict(
+        'Uno o más números que elegiste ya no están reservados para vos. Volvé a elegir.',
+      );
+    }
+    throw err;
+  }
+}
+
+/** Marca como pagados los números de una orden (aprobación). */
+export async function confirmReservedNumbers({ raffleId, numbers, orderId }) {
+  if (!numbers.length) return;
+  await ddb.send(
+    new TransactWriteCommand({
+      TransactItems: numbers.map((number) => ({
+        Update: {
+          TableName: TABLES.tickets,
+          Key: { raffleId, number },
+          UpdateExpression: 'SET confirmed = :true',
+          ConditionExpression: 'orderId = :orderId',
+          ExpressionAttributeValues: { ':true': true, ':orderId': orderId },
+        },
+      })),
+    }),
+  );
+}
+
+/** Libera de inmediato los números de una orden (rechazo o vencimiento): quedan disponibles ya. */
+export async function expireReservedNumbers({ raffleId, numbers, orderId }) {
+  if (!numbers.length) return;
+  const now = new Date().toISOString();
+  await Promise.all(
+    numbers.map((number) =>
+      ddb
+        .send(
+          new UpdateCommand({
+            TableName: TABLES.tickets,
+            Key: { raffleId, number },
+            UpdateExpression: 'SET reservedUntil = :now',
+            ConditionExpression: 'orderId = :orderId AND confirmed = :false',
+            ExpressionAttributeValues: { ':now': now, ':orderId': orderId, ':false': false },
+          }),
+        )
+        .catch((err) => {
+          if (err.name !== 'ConditionalCheckFailedException') throw err;
+        }),
+    ),
+  );
+}
+
+/**
+ * Extiende la reserva de los números de una orden mientras se revisa el
+ * comprobante (revisión manual puede tardar más que los 30 min originales).
+ * No toca `confirmed`: solo corre el vencimiento hacia adelante.
+ */
+export async function holdReservedNumbers({ raffleId, numbers, orderId, hours }) {
+  if (!numbers.length) return;
+  const until = new Date(Date.now() + hours * 3600000).toISOString();
+  await Promise.all(
+    numbers.map((number) =>
+      ddb
+        .send(
+          new UpdateCommand({
+            TableName: TABLES.tickets,
+            Key: { raffleId, number },
+            UpdateExpression: 'SET reservedUntil = :until',
+            ConditionExpression: 'orderId = :orderId AND confirmed = :false',
+            ExpressionAttributeValues: { ':until': until, ':orderId': orderId, ':false': false },
+          }),
+        )
+        .catch((err) => {
+          if (err.name !== 'ConditionalCheckFailedException') throw err;
+        }),
+    ),
+  );
+}
+
+/**
+ * Revierte una aprobación (admin cambia de opinión): el número deja de estar
+ * confirmado y queda liberado ya mismo. Caso raro, pero sin esto un número
+ * "desaprobado" quedaría bloqueado para siempre.
+ */
+export async function releaseConfirmedNumbers({ raffleId, numbers, orderId }) {
+  if (!numbers.length) return;
+  const now = new Date().toISOString();
+  await Promise.all(
+    numbers.map((number) =>
+      ddb
+        .send(
+          new UpdateCommand({
+            TableName: TABLES.tickets,
+            Key: { raffleId, number },
+            UpdateExpression: 'SET confirmed = :false, reservedUntil = :now',
+            ConditionExpression: 'orderId = :orderId',
+            ExpressionAttributeValues: { ':false': false, ':orderId': orderId, ':now': now },
+          }),
+        )
+        .catch((err) => {
+          if (err.name !== 'ConditionalCheckFailedException') throw err;
+        }),
+    ),
+  );
 }

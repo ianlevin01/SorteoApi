@@ -33,6 +33,7 @@ ordersRouter.post(
       buyerName: req.user.name,
       raffleId: req.valid.body.raffleId,
       tierId: req.valid.body.tierId,
+      numbers: req.valid.body.numbers,
     });
     res.status(201).json(result);
   }),

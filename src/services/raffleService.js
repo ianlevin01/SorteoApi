@@ -23,7 +23,9 @@ export function publicRaffle(r) {
     prizeDescription: r.prizeDescription || '',
     images: r.images || [],
     coverImage: r.coverImage || (r.images && r.images[0]) || null,
+    mode: r.mode || 'sequential', // 'sequential' (numeros correlativos) | 'pick' (elegis el numero)
     chanceTiers: (r.chanceTiers || []).slice().sort((a, b) => a.chances - b.chances),
+    pricePerNumber: r.pricePerNumber ?? null, // solo aplica a mode: 'pick'
     totalNumbers: r.totalNumbers ?? null,
     numbersAssigned: r.assignedCount || 0,
     confirmedChances: r.confirmedChances || 0,
@@ -63,6 +65,15 @@ export async function getRaffleForPurchase(raffleId) {
   return r;
 }
 
+/** Igual que `getRaffleForPurchase`, pero exige que sea de tipo "elegí tu número". */
+export async function getPickRaffleForPurchase(raffleId) {
+  const r = await getRaffleForPurchase(raffleId);
+  if ((r.mode || 'sequential') !== 'pick') {
+    throw badRequest('Este sorteo no permite elegir el número');
+  }
+  return r;
+}
+
 // ---------------- Admin ----------------
 
 export async function adminListRaffles() {
@@ -80,20 +91,38 @@ export async function adminRaffleStats(raffleId) {
   const raffle = await getRaffle(raffleId);
   if (!raffle) throw notFound('Sorteo no encontrado');
 
+  const mode = raffle.mode || 'sequential';
   const tickets = await listTicketsByRaffle(raffleId);
-  const participants = new Set(tickets.map((t) => t.dni)).size;
+
+  let numbersAssigned;
+  let numbersConfirmed;
+  let participants;
+
+  if (mode === 'pick') {
+    // en "elegí tu número" no hay contador global: se cuenta de los tickets
+    // los confirmados o con una reserva todavía vigente.
+    const nowIso = new Date().toISOString();
+    const held = tickets.filter((t) => t.confirmed || (t.reservedUntil && t.reservedUntil > nowIso));
+    numbersAssigned = held.length;
+    numbersConfirmed = held.filter((t) => t.confirmed).length;
+    participants = new Set(held.map((t) => t.dni)).size;
+  } else {
+    numbersAssigned = raffle.assignedCount || 0; // entregados (incluye no pagados)
+    numbersConfirmed = raffle.confirmedChances || 0; // con pago confirmado
+    participants = new Set(tickets.map((t) => t.dni)).size;
+  }
 
   return {
     raffleId,
+    mode,
     status: raffle.status,
     totalNumbers: raffle.totalNumbers ?? null,
-    numbersAssigned: raffle.assignedCount || 0, // entregados (incluye no pagados)
-    numbersConfirmed: raffle.confirmedChances || 0, // con pago confirmado
-    participants, // personas distintas con al menos un número (incluye pendientes)
-    progress:
-      raffle.totalNumbers
-        ? Math.min(100, Math.round(((raffle.assignedCount || 0) / raffle.totalNumbers) * 100))
-        : null,
+    numbersAssigned,
+    numbersConfirmed,
+    participants,
+    progress: raffle.totalNumbers
+      ? Math.min(100, Math.round((numbersAssigned / raffle.totalNumbers) * 100))
+      : null,
   };
 }
 
@@ -109,7 +138,9 @@ export async function adminCreateRaffle(input) {
     prizeDescription: input.prizeDescription || '',
     images: input.images || [],
     coverImage: input.coverImage || (input.images && input.images[0]) || null,
-    chanceTiers: input.chanceTiers,
+    mode: input.mode || 'sequential',
+    chanceTiers: input.chanceTiers || [],
+    pricePerNumber: input.pricePerNumber ?? null,
     totalNumbers: input.totalNumbers,
     status: input.status || 'draft',
     featured: Boolean(input.featured),
