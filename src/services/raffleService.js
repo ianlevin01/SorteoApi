@@ -4,6 +4,7 @@ import {
   listAllRaffles,
   createRaffle,
   updateRaffle,
+  deleteRaffle,
 } from '../repositories/raffleRepository.js';
 import { listTicketsByRaffle } from '../repositories/ticketRepository.js';
 import { notFound, badRequest } from '../lib/errors.js';
@@ -153,6 +154,24 @@ export async function adminCreateRaffle(input) {
   };
   await createRaffle(raffle);
   return raffle;
+}
+
+/**
+ * Solo se puede borrar un sorteo que todavía no tiene ninguna actividad real
+ * (ni un número asignado/reservado). Si ya hay tickets de por medio, mejor
+ * pausarlo o marcarlo finalizado: borrar perdería el rastro de compradores
+ * reales.
+ */
+export async function adminDeleteRaffle(raffleId) {
+  const raffle = await getRaffle(raffleId);
+  if (!raffle) throw notFound('Sorteo no encontrado');
+  const tickets = await listTicketsByRaffle(raffleId);
+  if (tickets.length > 0) {
+    throw badRequest(
+      'No se puede eliminar: ya tiene números asignados o reservados. Pausalo o marcalo como finalizado en cambio.',
+    );
+  }
+  await deleteRaffle(raffleId);
 }
 
 export async function adminUpdateRaffle(raffleId, patch) {

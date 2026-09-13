@@ -20,6 +20,7 @@ import {
   updateOrder,
   listOrdersByBuyer,
   listOrdersByStatus,
+  listAllOrders,
 } from '../repositories/orderRepository.js';
 import * as receiptVerification from './receiptVerificationService.js';
 
@@ -420,13 +421,46 @@ export async function listMyOrders(dni) {
 // ---------------- Admin ----------------
 
 export async function adminListOrders(status = ORDER_STATUS.SUBMITTED) {
-  return listOrdersByStatus(status);
+  const orders =
+    status === 'all' ? await listAllOrders() : await listOrdersByStatus(status);
+  return orders
+    .slice()
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
 export async function adminGetOrder(orderId) {
   const order = await getOrder(orderId);
   if (!order) throw notFound('Orden no encontrada');
   return order;
+}
+
+/**
+ * Overview para el panel: plata recaudada (órdenes aprobadas), compradores
+ * distintos y cuántas órdenes hay en cada estado (para el badge de "para
+ * revisar"). Se recalcula de un solo Scan completo.
+ */
+export async function adminOrdersSummary() {
+  const orders = await listAllOrders();
+
+  const byStatus = {};
+  let totalRevenue = 0;
+  const buyers = new Set();
+
+  for (const o of orders) {
+    byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+    if (o.status === ORDER_STATUS.APPROVED) {
+      totalRevenue += Number(o.amount) || 0;
+      buyers.add(o.dni);
+    }
+  }
+
+  return {
+    totalOrders: orders.length,
+    totalRevenue,
+    buyersCount: buyers.size,
+    byStatus,
+    pendingReviewCount: byStatus[ORDER_STATUS.SUBMITTED] || 0,
+  };
 }
 
 export async function approveOrder({ orderId, adminDni }) {

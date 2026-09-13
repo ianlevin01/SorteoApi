@@ -3,6 +3,7 @@ import {
   PutCommand,
   UpdateCommand,
   QueryCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { ddb } from '../config/aws.js';
 import { TABLES, INDEXES } from '../config/tables.js';
@@ -52,6 +53,25 @@ export async function updateOrder(orderId, patch, { expectedStatus } = {}) {
     }),
   );
   return Attributes;
+}
+
+/**
+ * Todas las órdenes, sin filtrar por estado. Pagina el Scan entero (no corta
+ * a la primera página de 1MB) porque de esto sale el total recaudado: no
+ * puede subestimar plata por trunco.
+ */
+export async function listAllOrders() {
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await ddb.send(
+      new ScanCommand({ TableName: TABLES.orders, ExclusiveStartKey }),
+    );
+    items.push(...(res.Items || []));
+    ExclusiveStartKey = res.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
 }
 
 export async function listOrdersByBuyer(dni) {

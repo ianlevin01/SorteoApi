@@ -64,6 +64,14 @@ adminRouter.patch(
   }),
 );
 
+adminRouter.delete(
+  '/raffles/:raffleId',
+  asyncHandler(async (req, res) => {
+    await raffleService.adminDeleteRaffle(req.params.raffleId);
+    res.status(204).end();
+  }),
+);
+
 adminRouter.get(
   '/raffles/:raffleId/stats',
   asyncHandler(async (req, res) => {
@@ -79,6 +87,13 @@ adminRouter.get(
 );
 
 // ---- Ordenes ----
+adminRouter.get(
+  '/orders-summary',
+  asyncHandler(async (_req, res) => {
+    res.json(await orderService.adminOrdersSummary());
+  }),
+);
+
 adminRouter.get(
   '/orders',
   asyncHandler(async (req, res) => {

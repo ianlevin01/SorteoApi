@@ -2,6 +2,7 @@ import {
   GetCommand,
   PutCommand,
   UpdateCommand,
+  DeleteCommand,
   QueryCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -45,6 +46,23 @@ export async function createRaffle(raffle) {
     }),
   );
   return raffle;
+}
+
+export async function deleteRaffle(raffleId) {
+  try {
+    await ddb.send(
+      new DeleteCommand({
+        TableName: TABLES.raffles,
+        Key: { raffleId },
+        ConditionExpression: 'attribute_exists(raffleId)',
+      }),
+    );
+  } catch (err) {
+    if (err.name === 'ConditionalCheckFailedException') {
+      throw notFound('Sorteo no encontrado');
+    }
+    throw err;
+  }
 }
 
 export async function updateRaffle(raffleId, patch) {
