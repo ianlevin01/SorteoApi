@@ -300,7 +300,7 @@ export async function expireReservedNumbers({ raffleId, numbers, orderId }) {
 
 /**
  * Extiende la reserva de los números de una orden mientras se revisa el
- * comprobante (revisión manual puede tardar más que los 30 min originales).
+ * comprobante (revisión manual puede tardar más que el plazo original de pago).
  * No toca `confirmed`: solo corre el vencimiento hacia adelante.
  */
 export async function holdReservedNumbers({ raffleId, numbers, orderId, hours }) {

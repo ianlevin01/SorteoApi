@@ -59,9 +59,10 @@ function orderNumberList(order) {
 
 /**
  * Si es una orden "elegí tu número" que sigue `pending_payment` y ya pasó su
- * `reservedUntil` (los 30 min para pagar), la vence: libera los números en la
- * tabla de tickets y marca la orden como `expired`. Se resuelve "perezosamente"
- * -acá, no con un job- la primera vez que alguien vuelve a mirar la orden.
+ * `reservedUntil` (los minutos que se dan para pagar, `pickReservationMinutes`),
+ * la vence: libera los números en la tabla de tickets y marca la orden como
+ * `expired`. Se resuelve "perezosamente" -acá, no con un job- la primera vez
+ * que alguien vuelve a mirar la orden.
  */
 async function expireOrderIfNeeded(order) {
   if (!order || order.status !== ORDER_STATUS.PENDING) return order;
@@ -76,7 +77,7 @@ async function expireOrderIfNeeded(order) {
 
   return updateOrder(order.orderId, {
     status: ORDER_STATUS.EXPIRED,
-    rejectionReason: 'Se venció el tiempo de 30 minutos para pagar y el número quedó liberado.',
+    rejectionReason: `Se venció el tiempo de ${env.pickReservationMinutes} minutos para pagar y el número quedó liberado.`,
   }).catch(() => order);
 }
 
@@ -297,7 +298,7 @@ export async function attachReceipt({ dni, orderId, receipt, fileBuffer, mimeTyp
 
   order = await expireOrderIfNeeded(order);
   if (order.status === ORDER_STATUS.EXPIRED) {
-    throw conflict('Se venció el tiempo de 30 minutos para pagar. Volvé a elegir tu número.');
+    throw conflict(`Se venció el tiempo de ${env.pickReservationMinutes} minutos para pagar. Volvé a elegir tu número.`);
   }
   if (!CAN_ATTACH_RECEIPT.includes(order.status)) {
     throw badRequest(`No se puede adjuntar un comprobante a una orden "${order.status}"`);
@@ -368,7 +369,7 @@ export async function attachReceipt({ dni, orderId, receipt, fileBuffer, mimeTyp
       // revisión o volver a adjuntar otro comprobante): en ambos casos el
       // número sigue "en juego" para esta orden, así que NO se libera acá.
       // Solo se libera cuando la orden llega a un estado de verdad terminal
-      // (rechazo definitivo del admin o vencimiento de los 30 min iniciales).
+      // (rechazo definitivo del admin o vencimiento del plazo inicial para pagar).
       const holdUntil = new Date(
         Date.now() + env.pickReviewHoldHours * 3600000,
       ).toISOString();

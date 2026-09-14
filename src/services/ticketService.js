@@ -95,7 +95,7 @@ export async function getMyRaffleTickets(dni, raffleId) {
     raffle: publicRaffle(raffle),
     tickets: tickets
       // En sorteos "elegí tu número" cada tap crea un ticket suelto sin
-      // `orderId` (reserva de 30 min, todavía no es una compra). No es un
+      // `orderId` (reserva temporal, todavía no es una compra). No es un
       // número "mío" para la billetera hasta que forma parte de una orden.
       .filter((t) => t.orderId)
       .map((t) => ({
