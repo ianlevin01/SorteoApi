@@ -43,6 +43,55 @@ export async function reserveNumberForUser({ raffleId, number, dni, holderName }
   return { number: n, reservedUntil: ticket.reservedUntil };
 }
 
+const MAX_RANDOM = 20; // tope por pedido, para no permitir un abuso
+
+/**
+ * Reserva `count` números al azar entre los disponibles. Prueba candidatos al
+ * azar y reintenta ante un choque (número ya tomado/reservado) — con un
+ * sorteo recién lanzado esto acierta casi siempre a la primera; si ya está
+ * muy vendido, puede devolver menos de los pedidos (nunca falla del todo si
+ * consiguió al menos uno).
+ */
+export async function reserveRandomNumbersForUser({ raffleId, count, dni, holderName }) {
+  const raffle = await getPickRaffleForPurchase(raffleId);
+  const n = Math.max(1, Math.min(MAX_RANDOM, Number(count) || 1));
+  if (n > raffle.totalNumbers) {
+    throw badRequest('Este sorteo no tiene tantos números.');
+  }
+
+  const reserved = [];
+  const tried = new Set();
+  const maxAttempts = Math.max(30, n * 30);
+  let attempts = 0;
+
+  while (reserved.length < n && attempts < maxAttempts) {
+    attempts += 1;
+    const candidate = Math.floor(Math.random() * raffle.totalNumbers);
+    if (tried.has(candidate)) continue;
+    tried.add(candidate);
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const ticket = await reserveNumber({
+        raffleId,
+        number: candidate,
+        dni,
+        holderName,
+        minutes: env.pickReservationMinutes,
+      });
+      reserved.push({ number: candidate, reservedUntil: ticket.reservedUntil });
+    } catch (err) {
+      if (err.status !== 409) throw err; // otro problema real: no lo tragamos
+      // 409 = ese número ya no está libre; probamos otro candidato
+    }
+  }
+
+  if (reserved.length === 0) {
+    throw badRequest('No pudimos encontrar números libres al azar. Probá elegir manualmente.');
+  }
+
+  return { reserved: reserved.sort((a, b) => a.number - b.number), requested: n };
+}
+
 /** Libera (deselecciona) un número reservado por el propio usuario. */
 export async function releaseNumberForUser({ raffleId, number, dni }) {
   const released = await releaseReservation({ raffleId, number: Number(number), dni });

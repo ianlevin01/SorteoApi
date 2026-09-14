@@ -63,6 +63,21 @@ rafflesRouter.post(
   }),
 );
 
+// Reservo N números al azar entre los disponibles, de una.
+rafflesRouter.post(
+  '/:raffleId/numbers/random',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const result = await pickService.reserveRandomNumbersForUser({
+      raffleId: req.params.raffleId,
+      count: req.body?.count,
+      dni: req.user.dni,
+      holderName: req.user.name,
+    });
+    res.status(201).json(result);
+  }),
+);
+
 // Deselecciono un número que había reservado (antes de pagar).
 rafflesRouter.delete(
   '/:raffleId/numbers/:number/reserve',
