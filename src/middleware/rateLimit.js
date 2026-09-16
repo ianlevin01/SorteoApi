@@ -21,3 +21,12 @@ export const apiLimiter = rateLimit({
   legacyHeaders: false,
   message,
 });
+
+/** El chat con la IA cuesta plata real por mensaje: límite más estricto. */
+export const chatLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message,
+});

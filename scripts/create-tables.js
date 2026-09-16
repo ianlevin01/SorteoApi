@@ -100,6 +100,39 @@ const tableDefinitions = [
       },
     ],
   },
+  {
+    // Consultas escaladas a un asesor (el chat con la IA nunca llega acá:
+    // solo vive en el localStorage del usuario hasta que se deriva).
+    TableName: TABLES.inquiries,
+    AttributeDefinitions: [
+      { AttributeName: 'inquiryId', AttributeType: 'S' },
+      { AttributeName: 'status', AttributeType: 'S' },
+      { AttributeName: 'lastMessageAt', AttributeType: 'S' },
+    ],
+    KeySchema: [{ AttributeName: 'inquiryId', KeyType: 'HASH' }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: INDEXES.inquiriesByStatus,
+        KeySchema: [
+          { AttributeName: 'status', KeyType: 'HASH' },
+          { AttributeName: 'lastMessageAt', KeyType: 'RANGE' },
+        ],
+        Projection: { ProjectionType: 'ALL' },
+      },
+    ],
+  },
+  {
+    // Mensajes del chat EN VIVO de una consulta ya escalada (comprador <-> admin).
+    TableName: TABLES.inquiryMessages,
+    AttributeDefinitions: [
+      { AttributeName: 'inquiryId', AttributeType: 'S' },
+      { AttributeName: 'messageId', AttributeType: 'S' },
+    ],
+    KeySchema: [
+      { AttributeName: 'inquiryId', KeyType: 'HASH' },
+      { AttributeName: 'messageId', KeyType: 'RANGE' },
+    ],
+  },
 ];
 
 async function tableExists(name) {

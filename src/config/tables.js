@@ -7,6 +7,8 @@ export const TABLES = {
   raffles: `${p}raffles`,
   tickets: `${p}tickets`,
   orders: `${p}orders`,
+  inquiries: `${p}inquiries`,
+  inquiryMessages: `${p}inquiry_messages`,
 };
 
 export const INDEXES = {
@@ -16,4 +18,5 @@ export const INDEXES = {
   ticketsByCode: 'code-index',
   ordersByBuyer: 'buyer-index',
   ordersByStatus: 'status-index',
+  inquiriesByStatus: 'status-index',
 };

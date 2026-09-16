@@ -3,6 +3,8 @@ import { ulid } from 'ulid';
 
 export const newOrderId = () => `ord_${ulid()}`;
 export const newRaffleId = () => `raf_${ulid()}`;
+export const newInquiryId = () => `inq_${ulid()}`;
+export const newMessageId = () => `msg_${ulid()}`; // ulid ordena por tiempo de creación
 
 // Alfabeto sin caracteres ambiguos (sin 0/O/1/I/L/U) para codigos legibles.
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';

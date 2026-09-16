@@ -10,6 +10,7 @@ import * as raffleService from '../services/raffleService.js';
 import * as orderService from '../services/orderService.js';
 import * as ticketService from '../services/ticketService.js';
 import * as pickService from '../services/pickService.js';
+import * as inquiryService from '../services/inquiryService.js';
 import { receiptViewUrl, uploadMedia, IMAGE_MIME_TYPES } from '../services/storageService.js';
 
 const imageUpload = multer({
@@ -154,5 +155,40 @@ adminRouter.post(
         reason: req.valid.body.reason,
       }),
     );
+  }),
+);
+
+// ---- Consultas (derivadas del chat con el asistente) ----
+
+adminRouter.get(
+  '/inquiries',
+  asyncHandler(async (req, res) => {
+    res.json(await inquiryService.adminListInquiries(req.query.status || 'open'));
+  }),
+);
+
+adminRouter.get(
+  '/inquiries/:inquiryId',
+  asyncHandler(async (req, res) => {
+    res.json(await inquiryService.adminGetInquiry(req.params.inquiryId));
+  }),
+);
+
+adminRouter.post(
+  '/inquiries/:inquiryId/messages',
+  asyncHandler(async (req, res) => {
+    const message = await inquiryService.adminReply({
+      inquiryId: req.params.inquiryId,
+      adminDni: req.user.dni,
+      text: req.body?.text,
+    });
+    res.status(201).json(message);
+  }),
+);
+
+adminRouter.post(
+  '/inquiries/:inquiryId/close',
+  asyncHandler(async (req, res) => {
+    res.json(await inquiryService.adminCloseInquiry(req.params.inquiryId));
   }),
 );

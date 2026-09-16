@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { env } from './config/env.js';
-import { authLimiter, apiLimiter } from './middleware/rateLimit.js';
+import { authLimiter, apiLimiter, chatLimiter } from './middleware/rateLimit.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { healthRouter } from './routes/health.routes.js';
 import { authRouter } from './routes/auth.routes.js';
@@ -12,6 +12,7 @@ import { meRouter } from './routes/me.routes.js';
 import { ordersRouter } from './routes/orders.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
 import { verifyRouter } from './routes/verify.routes.js';
+import { chatRouter } from './routes/chat.routes.js';
 
 export function createApp() {
   const app = express();
@@ -39,6 +40,7 @@ export function createApp() {
   app.use('/api/verify', verifyRouter);
   app.use('/api/me', meRouter);
   app.use('/api/orders', ordersRouter);
+  app.use('/api/chat', chatLimiter, chatRouter);
   app.use('/api/admin', adminRouter);
 
   app.use(notFoundHandler);

@@ -50,6 +50,38 @@ export async function receiptViewUrl(key, expiresInSeconds = 300) {
   );
 }
 
+/**
+ * Sube al bucket PRIVADO una imagen adjuntada al momento de escalar una
+ * consulta a un asesor (viene como data URI desde el navegador). Mientras el
+ * chat es solo con la IA no se sube ni se guarda nada de esto -la imagen se
+ * manda directo a la IA desde el navegador-; recién acá, si hace falta,
+ * queda una copia para que el asesor la pueda ver.
+ */
+export async function uploadChatImageFromDataUrl({ dni, dataUrl }) {
+  if (!env.s3.bucket) {
+    throw new Error('S3_BUCKET no está configurado en backend/.env');
+  }
+  const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl || '');
+  if (!match) throw new Error('Imagen inválida');
+  const [, mimetype, b64] = match;
+  const buffer = Buffer.from(b64, 'base64');
+  const ext = EXT_BY_MIME[mimetype] || 'bin';
+  const key = `chat/${dni || 'anon'}/${Date.now()}-${randomUUID()}.${ext}`;
+  await s3.send(
+    new PutObjectCommand({ Bucket: env.s3.bucket, Key: key, Body: buffer, ContentType: mimetype }),
+  );
+  return { key, contentType: mimetype, size: buffer.length };
+}
+
+/** URL firmada para que el admin vea una imagen adjuntada en una consulta escalada. */
+export async function chatImageViewUrl(key, expiresInSeconds = 300) {
+  return getSignedUrl(
+    s3,
+    new GetObjectCommand({ Bucket: env.s3.bucket, Key: key }),
+    { expiresIn: expiresInSeconds },
+  );
+}
+
 function mediaPublicUrl(key) {
   const base =
     env.media.publicBaseUrl ||
