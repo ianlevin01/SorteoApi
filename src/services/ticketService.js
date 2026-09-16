@@ -80,7 +80,29 @@ export async function getMyRaffleGroups(dni) {
     );
 }
 
-/** Todos los tickets del usuario en un sorteo, como colección para la billetera. */
+/** Expande `order.numbers` (ambos modos) a la lista de números individuales. */
+function numbersInOrder(numbers) {
+  if (!numbers) return [];
+  if (Array.isArray(numbers.list)) return numbers.list;
+  if (Number.isInteger(numbers.start) && Number.isInteger(numbers.count)) {
+    return Array.from({ length: numbers.count }, (_, i) => numbers.start + i);
+  }
+  return [];
+}
+
+/**
+ * Todos los tickets del usuario en un sorteo, como colección para la
+ * billetera. Se arma a partir de LAS ÓRDENES (registro permanente, nunca se
+ * pisa ni se borra) y no de la tabla de tickets en sí: un número
+ * rechazado/vencido se libera y con el tiempo alguien más puede volver a
+ * tomarlo (compra real, o un alta manual del admin), lo que pisa esa fila en
+ * la tabla de tickets. Si acá dependiéramos solo de esa fila, el historial
+ * de "tuve este número y se rechazó" desaparecería de la vista del
+ * comprador original apenas otra persona ocupara el número — pasó de
+ * verdad, ver [[sorteo-project]]. Por eso solo usamos el ticket "vivo" para
+ * completar el código de verificación cuando todavía es efectivamente mío;
+ * si no, igual mostramos la fila (con el estado que corresponde) sin código.
+ */
 export async function getMyRaffleTickets(dni, raffleId) {
   const [tickets, orders, raffle] = await Promise.all([
     listTicketsByOwner(dni, raffleId),
@@ -89,23 +111,32 @@ export async function getMyRaffleTickets(dni, raffleId) {
   ]);
   if (!raffle) throw notFound('Sorteo no encontrado');
 
-  const statusByOrder = new Map(orders.map((o) => [o.orderId, o.status]));
+  const ticketByNumber = new Map(tickets.map((t) => [t.number, t]));
+  const myOrders = orders.filter(
+    (o) => o.raffleId === raffleId && o.numbers && o.status !== 'failed',
+  );
+
+  const result = [];
+  for (const o of myOrders) {
+    const status = ticketStatusFromOrder(o.status);
+    for (const number of numbersInOrder(o.numbers)) {
+      const live = ticketByNumber.get(number);
+      const stillMine = Boolean(live && live.dni === dni && live.orderId === o.orderId);
+      result.push({
+        number,
+        verificationCode: stillMine ? live.verificationCode : null,
+        status,
+        orderId: o.orderId,
+        createdAt: (stillMine && live.createdAt) || o.createdAt,
+      });
+    }
+  }
 
   return {
     raffle: publicRaffle(raffle),
-    tickets: tickets
-      // En sorteos "elegí tu número" cada tap crea un ticket suelto sin
-      // `orderId` (reserva temporal, todavía no es una compra). No es un
-      // número "mío" para la billetera hasta que forma parte de una orden.
-      .filter((t) => t.orderId)
-      .map((t) => ({
-        number: t.number,
-        verificationCode: t.verificationCode,
-        status: ticketStatusFromOrder(statusByOrder.get(t.orderId) || 'pending_payment'),
-        orderId: t.orderId,
-        createdAt: t.createdAt,
-      }))
-      .sort((a, b) => a.number - b.number),
+    tickets: result.sort(
+      (a, b) => a.number - b.number || String(a.createdAt).localeCompare(String(b.createdAt)),
+    ),
   };
 }
 
