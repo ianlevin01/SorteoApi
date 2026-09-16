@@ -48,7 +48,7 @@ rafflesRouter.get(
   }),
 );
 
-// Reservo un número puntual por PICK_RESERVATION_MINUTES (10 min por defecto).
+// Reservo un número puntual por env.pickReservationMinutes (10 min, fijo).
 rafflesRouter.post(
   '/:raffleId/numbers/:number/reserve',
   requireAuth,

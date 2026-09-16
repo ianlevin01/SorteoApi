@@ -71,7 +71,11 @@ export const env = {
   },
 
   // Sorteos "elegí tu número": minutos que se reserva un número al tocarlo.
-  pickReservationMinutes: Number(process.env.PICK_RESERVATION_MINUTES || 10),
+  // Fijo en 10 a propósito (ya NO se lee de env var): un .env viejo en el
+  // servidor con PICK_RESERVATION_MINUTES=30 hacía que este valor divergiera
+  // en producción sin que se notara mirando el código. Si en algún momento
+  // hace falta cambiarlo, cambiar este número acá (y confirmar el deploy).
+  pickReservationMinutes: 10,
   // Mientras el comprobante está en revisión manual, el número se sostiene
   // (no vuelve a estar disponible) por esta cantidad de horas.
   pickReviewHoldHours: Number(process.env.PICK_REVIEW_HOLD_HOURS || 72),
