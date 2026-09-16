@@ -9,6 +9,7 @@ import { rejectOrderSchema } from '../schemas/order.schema.js';
 import * as raffleService from '../services/raffleService.js';
 import * as orderService from '../services/orderService.js';
 import * as ticketService from '../services/ticketService.js';
+import * as pickService from '../services/pickService.js';
 import { receiptViewUrl, uploadMedia, IMAGE_MIME_TYPES } from '../services/storageService.js';
 
 const imageUpload = multer({
@@ -83,6 +84,20 @@ adminRouter.get(
   '/raffles/:raffleId/tickets',
   asyncHandler(async (req, res) => {
     res.json(await ticketService.adminRaffleTickets(req.params.raffleId));
+  }),
+);
+
+// Dar de alta números ya vendidos fuera del sistema (sorteo "elegí tu
+// número" que ya estaba en marcha antes de migrarlo). Sin comprador real.
+adminRouter.post(
+  '/raffles/:raffleId/numbers/block',
+  asyncHandler(async (req, res) => {
+    const result = await pickService.blockNumbersForAdmin({
+      raffleId: req.params.raffleId,
+      numbers: req.body?.numbers,
+      note: req.body?.note,
+    });
+    res.status(201).json(result);
   }),
 );
 

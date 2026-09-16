@@ -75,6 +75,19 @@ export async function getPickRaffleForPurchase(raffleId) {
   return r;
 }
 
+/**
+ * Como `getPickRaffleForPurchase`, pero sin exigir que el sorteo esté activo
+ * (uso del admin: puede querer cargar números vendidos antes de activarlo).
+ */
+export async function getPickRaffle(raffleId) {
+  const r = await getRaffle(raffleId);
+  if (!r) throw notFound('Sorteo no encontrado');
+  if ((r.mode || 'sequential') !== 'pick') {
+    throw badRequest('Este sorteo no es "elegí tu número"');
+  }
+  return r;
+}
+
 // ---------------- Admin ----------------
 
 export async function adminListRaffles() {

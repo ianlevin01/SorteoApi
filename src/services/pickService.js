@@ -1,11 +1,12 @@
 import { env } from '../config/env.js';
 import { badRequest } from '../lib/errors.js';
-import { getPickRaffleForPurchase } from './raffleService.js';
+import { getPickRaffleForPurchase, getPickRaffle } from './raffleService.js';
 import {
   reserveNumber,
   releaseReservation,
   listUnavailableInRange,
   listMyActiveReservations,
+  blockNumbers,
 } from '../repositories/ticketRepository.js';
 
 const MAX_RANGE = 500; // no dejamos pedir rangos gigantes de una
@@ -98,6 +99,37 @@ export async function releaseNumberForUser({ raffleId, number, dni }) {
   if (!released) {
     throw badRequest('Ese número no está reservado por vos (o ya se convirtió en una compra).');
   }
+}
+
+const MAX_BLOCK_PER_CALL = 5000;
+
+/**
+ * Admin: da de alta números ya vendidos FUERA del sistema (sorteo que ya
+ * estaba en marcha antes de migrarlo, ventas en persona/WhatsApp, etc.), sin
+ * datos de comprador reales. Quedan tomados para siempre, igual que una
+ * venta real, pero nunca pisa un número que ya tiene una compra o reserva
+ * real vigente (esos vuelven en `skipped`).
+ */
+export async function blockNumbersForAdmin({ raffleId, numbers, note }) {
+  const raffle = await getPickRaffle(raffleId);
+  if (!Array.isArray(numbers) || !numbers.length) {
+    throw badRequest('Mandá al menos un número');
+  }
+  const clean = [...new Set(numbers.map((n) => Number(n)))];
+  if (clean.length > MAX_BLOCK_PER_CALL) {
+    throw badRequest(`No se puede cargar más de ${MAX_BLOCK_PER_CALL} números de una vez`);
+  }
+  const invalid = clean.filter((n) => !Number.isInteger(n) || n < 0 || n >= raffle.totalNumbers);
+  if (invalid.length) {
+    throw badRequest(
+      `Hay números fuera de rango (0 a ${raffle.totalNumbers - 1}): ${invalid.slice(0, 10).join(', ')}${invalid.length > 10 ? '…' : ''}`,
+    );
+  }
+  const { blocked, skipped } = await blockNumbers({ raffleId, numbers: clean, note });
+  return {
+    blocked: blocked.sort((a, b) => a - b),
+    skipped: skipped.sort((a, b) => a - b),
+  };
 }
 
 /** Selección activa del usuario (números reservados, sin orden todavía). */

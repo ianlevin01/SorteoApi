@@ -326,6 +326,59 @@ export async function holdReservedNumbers({ raffleId, numbers, orderId, hours })
 }
 
 /**
+ * Da de alta números que ya se vendieron FUERA del sistema (sorteo que
+ * arranca a mitad de camino, venta en persona/WhatsApp) y de los que no hay
+ * comprador real cargado. Quedan permanentemente tomados, igual que si se
+ * hubiera pagado, pero con un `dni` placeholder (no es un DNI de verdad).
+ *
+ * Nunca pisa un ticket que ya tiene una compra o reserva real vigente -en
+ * ese caso lo salta y lo devuelve en `skipped`- para no poder tapar por
+ * error una venta genuina hecha a través del sistema.
+ */
+export async function blockNumbers({ raffleId, numbers, note }) {
+  const now = new Date().toISOString();
+  const blocked = [];
+  const skipped = [];
+
+  await Promise.all(
+    numbers.map(async (number) => {
+      const item = {
+        raffleId,
+        number,
+        dni: `offline-${number}`,
+        holderName: note || 'Venta previa (fuera del sistema)',
+        verificationCode: newVerificationCode(),
+        confirmed: true,
+        reservedUntil: now,
+        gsi1sk: ownerSortKey(raffleId, number),
+        createdAt: now,
+        offline: true,
+      };
+      try {
+        await ddb.send(
+          new PutCommand({
+            TableName: TABLES.tickets,
+            Item: item,
+            ConditionExpression:
+              'attribute_not_exists(raffleId) OR (confirmed = :false AND reservedUntil < :now)',
+            ExpressionAttributeValues: { ':false': false, ':now': now },
+          }),
+        );
+        blocked.push(number);
+      } catch (err) {
+        if (err.name === 'ConditionalCheckFailedException') {
+          skipped.push(number);
+        } else {
+          throw err;
+        }
+      }
+    }),
+  );
+
+  return { blocked, skipped };
+}
+
+/**
  * Revierte una aprobación (admin cambia de opinión): el número deja de estar
  * confirmado y queda liberado ya mismo. Caso raro, pero sin esto un número
  * "desaprobado" quedaría bloqueado para siempre.
