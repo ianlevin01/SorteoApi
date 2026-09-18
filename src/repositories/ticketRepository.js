@@ -379,6 +379,62 @@ export async function blockNumbers({ raffleId, numbers, note }) {
 }
 
 /**
+ * Asigna números puntuales a un DNI real (esté o no registrado todavía) de
+ * forma ATÓMICA: si alguno de los números pedidos ya no está completamente
+ * disponible (reservado en este momento por alguien más, o ya confirmado),
+ * no se asigna NINGUNO — a diferencia de `blockNumbers`, acá no tiene sentido
+ * un éxito parcial silencioso porque es una asignación puntual a una persona
+ * concreta. Se usa `orderId` para que el número quede enganchado a una orden
+ * real (así aparece en "Mis números" si esa persona se registra después, ver
+ * [[sorteo-pick-mode]]).
+ */
+export async function assignNumbersToDni({ raffleId, numbers, dni, holderName, orderId }) {
+  const now = new Date().toISOString();
+  const items = numbers.map((number) => ({
+    raffleId,
+    number,
+    dni,
+    holderName: holderName || null,
+    orderId,
+    verificationCode: newVerificationCode(),
+    confirmed: true,
+    reservedUntil: now,
+    gsi1sk: ownerSortKey(raffleId, number),
+    createdAt: now,
+    adminAssigned: true,
+  }));
+
+  try {
+    await ddb.send(
+      new TransactWriteCommand({
+        TransactItems: items.map((Item) => ({
+          Put: {
+            TableName: TABLES.tickets,
+            Item,
+            ConditionExpression:
+              'attribute_not_exists(raffleId) OR (confirmed = :false AND reservedUntil < :now)',
+            ExpressionAttributeValues: { ':false': false, ':now': now },
+          },
+        })),
+      }),
+    );
+  } catch (err) {
+    if (err.name === 'TransactionCanceledException') {
+      const reasons = err.CancellationReasons || [];
+      const unavailable = numbers.filter((_, i) => reasons[i]?.Code === 'ConditionalCheckFailed');
+      throw conflict(
+        unavailable.length
+          ? `Estos números ya no están disponibles: ${unavailable.join(', ')}. No se asignó ninguno.`
+          : 'Uno o más números ya no están disponibles. No se asignó ninguno.',
+      );
+    }
+    throw err;
+  }
+
+  return items;
+}
+
+/**
  * Revierte una aprobación (admin cambia de opinión): el número deja de estar
  * confirmado y queda liberado ya mismo. Caso raro, pero sin esto un número
  * "desaprobado" quedaría bloqueado para siempre.

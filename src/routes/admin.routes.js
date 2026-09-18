@@ -102,6 +102,23 @@ adminRouter.post(
   }),
 );
 
+// Asigna números puntuales a un DNI real (esté o no registrado). A
+// diferencia de /numbers/block, crea una orden real para que la persona
+// vea sus números en "Mis números" si se registra después.
+adminRouter.post(
+  '/raffles/:raffleId/numbers/assign',
+  asyncHandler(async (req, res) => {
+    const result = await pickService.assignNumbersForAdmin({
+      raffleId: req.params.raffleId,
+      numbers: req.body?.numbers,
+      dni: req.body?.dni,
+      name: req.body?.name,
+      note: req.body?.note,
+    });
+    res.status(201).json(result);
+  }),
+);
+
 // ---- Ordenes ----
 adminRouter.get(
   '/orders-summary',
