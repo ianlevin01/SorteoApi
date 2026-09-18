@@ -1,6 +1,19 @@
-import { GetCommand, PutCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, UpdateCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from '../config/aws.js';
 import { TABLES, INDEXES } from '../config/tables.js';
+
+/** Todos los usuarios (admin: buscador de clientes). La tabla es chica, un Scan alcanza. */
+export async function listAllUsers() {
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await ddb.send(new ScanCommand({ TableName: TABLES.users, ExclusiveStartKey }));
+    items.push(...(res.Items || []));
+    ExclusiveStartKey = res.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
+}
 
 export async function getUserByDni(dni) {
   const { Item } = await ddb.send(

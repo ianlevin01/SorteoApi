@@ -11,6 +11,7 @@ import * as orderService from '../services/orderService.js';
 import * as ticketService from '../services/ticketService.js';
 import * as pickService from '../services/pickService.js';
 import * as inquiryService from '../services/inquiryService.js';
+import * as customerService from '../services/customerService.js';
 import { receiptViewUrl, uploadMedia, IMAGE_MIME_TYPES } from '../services/storageService.js';
 
 const imageUpload = multer({
@@ -207,5 +208,21 @@ adminRouter.post(
   '/inquiries/:inquiryId/close',
   asyncHandler(async (req, res) => {
     res.json(await inquiryService.adminCloseInquiry(req.params.inquiryId));
+  }),
+);
+
+// ---- Clientes ----
+
+adminRouter.get(
+  '/users',
+  asyncHandler(async (req, res) => {
+    res.json(await customerService.adminSearchUsers(req.query.q || ''));
+  }),
+);
+
+adminRouter.get(
+  '/users/:dni',
+  asyncHandler(async (req, res) => {
+    res.json(await customerService.adminGetUser(req.params.dni));
   }),
 );
