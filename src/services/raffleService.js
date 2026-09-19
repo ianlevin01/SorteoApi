@@ -9,8 +9,14 @@ import {
 import { listTicketsByRaffle } from '../repositories/ticketRepository.js';
 import { notFound, badRequest } from '../lib/errors.js';
 import { newRaffleId, slugify } from '../lib/ids.js';
+import { argentinaWallClockToUtc, formatArgentinaDateTime } from '../lib/argentinaTime.js';
 
 const PUBLIC_STATUSES = new Set(['active', 'paused', 'finished']);
+
+/** ¿Ya pasó el horario de cierre de ventas de este sorteo? */
+export function isRaffleClosed(raffle) {
+  return Boolean(raffle?.closesAt && new Date() >= new Date(raffle.closesAt));
+}
 
 /** Version del sorteo que ve el publico (sin campos internos). */
 export function publicRaffle(r) {
@@ -34,6 +40,7 @@ export function publicRaffle(r) {
     status: r.status,
     drawDate: r.drawDate || null,
     winner: r.winner || null,
+    closesAt: r.closesAt || null,
     createdAt: r.createdAt,
   };
 }
@@ -62,6 +69,11 @@ export async function getRaffleForPurchase(raffleId) {
   if (!r) throw notFound('Sorteo no encontrado');
   if (r.status !== 'active') {
     throw badRequest('Este sorteo no está recibiendo compras en este momento');
+  }
+  if (isRaffleClosed(r)) {
+    throw badRequest(
+      `Ya cerraron las ventas para este sorteo. El sorteo se realiza a las ${formatArgentinaDateTime(r.closesAt)}.`,
+    );
   }
   return r;
 }
@@ -158,10 +170,11 @@ export async function adminCreateRaffle(input) {
     totalNumbers: input.totalNumbers,
     status: input.status || 'draft',
     featured: Boolean(input.featured),
-    drawDate: input.drawDate || null,
+    drawDate: input.drawDate ? argentinaWallClockToUtc(input.drawDate)?.toISOString() || null : null,
     assignedCount: 0,
     confirmedChances: 0,
-    winner: null,
+    winner: input.winningNumber != null ? { number: input.winningNumber } : null,
+    closesAt: input.closesAt ? argentinaWallClockToUtc(input.closesAt)?.toISOString() || null : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -201,5 +214,40 @@ export async function adminUpdateRaffle(raffleId, patch) {
       `No se puede bajar el total a ${patch.totalNumbers}: ya se asignaron ${current.assignedCount} números`,
     );
   }
+
+  // El número ganador viaja como `winningNumber` (número suelto) pero se
+  // guarda como `winner: {number}` (o null para borrarlo).
+  if ('winningNumber' in patch) {
+    const total = current.totalNumbers;
+    if (patch.winningNumber != null && total != null && patch.winningNumber >= total) {
+      throw badRequest(`El número ganador tiene que estar entre 0 y ${total - 1}`);
+    }
+    next.winner = patch.winningNumber != null ? { number: patch.winningNumber } : null;
+    delete next.winningNumber;
+  }
+
+  // El horario de cierre y la fecha del sorteo viajan como string de
+  // <input type="datetime-local"> ("YYYY-MM-DDTHH:mm", sin huso horario) y
+  // se interpretan siempre como hora de Argentina — nunca la del navegador
+  // ni la del servidor.
+  if ('closesAt' in patch) {
+    if (patch.closesAt) {
+      const utc = argentinaWallClockToUtc(patch.closesAt);
+      if (!utc) throw badRequest('Formato de fecha/hora de cierre inválido');
+      next.closesAt = utc.toISOString();
+    } else {
+      next.closesAt = null;
+    }
+  }
+  if ('drawDate' in patch) {
+    if (patch.drawDate) {
+      const utc = argentinaWallClockToUtc(patch.drawDate);
+      if (!utc) throw badRequest('Formato de fecha/hora del sorteo inválido');
+      next.drawDate = utc.toISOString();
+    } else {
+      next.drawDate = null;
+    }
+  }
+
   return updateRaffle(raffleId, next);
 }

@@ -23,7 +23,21 @@ const baseRaffle = z.object({
   totalNumbers: z.number().int().positive().max(10_000_000),
   status: z.enum(['draft', 'active', 'paused', 'finished']).optional(),
   featured: z.boolean().optional(),
-  drawDate: z.string().datetime().optional(),
+  // "YYYY-MM-DDTHH:mm" tal cual lo manda un <input type="datetime-local">:
+  // se interpreta como hora de Argentina en el servicio, nunca la del
+  // navegador ni la del servidor (ver lib/argentinaTime.js).
+  drawDate: z
+    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'Formato de fecha/hora inválido'), z.null()])
+    .optional(),
+  // Número ganador (una vez que se hizo el sorteo). null para borrarlo.
+  winningNumber: z.number().int().nonnegative().nullable().optional(),
+  // Horario de cierre de ventas, tal cual lo manda un <input
+  // type="datetime-local"> ("YYYY-MM-DDTHH:mm"): se interpreta como hora de
+  // Argentina en el servicio (ver lib/argentinaTime.js), nunca como la hora
+  // del navegador ni la del servidor. null para sacar el cierre.
+  closesAt: z
+    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'Formato de fecha/hora inválido'), z.null()])
+    .optional(),
 });
 
 function checkModeFields(v, ctx) {

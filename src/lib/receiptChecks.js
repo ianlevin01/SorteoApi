@@ -3,6 +3,8 @@
  * lo que esperamos. NO llaman a ningun servicio externo.
  */
 
+import { AR_OFFSET_MS, arCalendarDay } from './argentinaTime.js';
+
 const stripAccents = (s) =>
   String(s ?? '')
     .normalize('NFD')
@@ -36,28 +38,15 @@ export function dniFromTaxId(taxId) {
   return null;
 }
 
-// Argentina es UTC-3 fijo todo el año (no tiene horario de verano), así que
-// alcanza con un offset constante — nada de cálculos de DST.
-const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
-
-/**
- * "Día calendario" de un instante o fecha, pero en Argentina — NO en el
- * huso horario del proceso de Node (que en el servidor real corre en UTC).
- * Devuelve un valor comparable (epoch de la medianoche UTC de ese Y-M-D):
- * es solo una etiqueta de día, no un instante real, pero sirve para
- * comparar "mismo día ART o no" sin que importe en qué TZ corre el server.
- *
- * Bug real que esto arregla (2026-09-18): un pedido hecho a las 21:52 hora
- * argentina cae en UTC ya del día siguiente (00:52 UTC). Con
- * `x.setHours(0,0,0,0)` en un server que corre en UTC, "el día del pedido"
- * se calculaba mal (un día adelantado), así que un comprobante fechado
- * correctamente el mismo día ART (como lo imprime el banco, en hora local)
- * quedaba marcado como "anterior a la compra" y se rechazaba un pago válido.
- */
-function arCalendarDay(d) {
-  const shifted = new Date(d.getTime() - AR_OFFSET_MS);
-  return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
-}
+// `arCalendarDay`/`AR_OFFSET_MS` viven en lib/argentinaTime.js (una sola
+// fuente de la verdad para toda la lógica de huso horario del proyecto).
+// Bug real que esto arregló (2026-09-18): un pedido hecho a las 21:52 hora
+// argentina cae en UTC ya del día siguiente (00:52 UTC). Comparar "día del
+// pedido" con métodos que dependen del huso horario del PROCESO de Node
+// (que en el servidor real corre en UTC) lo calculaba mal (un día
+// adelantado), así que un comprobante fechado correctamente el mismo día
+// ART (como lo imprime el banco, en hora local) quedaba marcado como
+// "anterior a la compra" y se rechazaba un pago válido.
 
 export function parseReceiptDate(input) {
   if (!input) return null;
