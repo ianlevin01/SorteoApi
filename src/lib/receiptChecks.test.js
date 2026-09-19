@@ -123,6 +123,25 @@ test('evaluateReceipt - fecha anterior a la reserva -> reject', () => {
   assert.equal(r.verdict, 'reject');
 });
 
+test('evaluateReceipt - pedido de noche (21hs+ ART) no rechaza un comprobante del mismo día', () => {
+  // Bug real (2026-09-18): pedido a las 21:52 hora Argentina -> en UTC ya es
+  // 00:52 del día siguiente. El comprobante, fechado correctamente el mismo
+  // día en hora local (como lo imprime el banco), quedaba marcado como
+  // "anterior a la compra" si el chequeo comparaba por día calendario en el
+  // huso horario del server (UTC en el EC2 real) en vez de en Argentina.
+  const nightOrder = { ...baseOrder, createdAt: '2026-09-19T00:52:00.000Z' }; // 21:52 ART del 18/09
+  const r = evaluateReceipt({
+    extracted: { ...goodExtract, dateIso: '2026-09-18', dateText: '18/septiembre/2026 a las 21:53' },
+    order: nightOrder,
+    user: baseUser,
+    payment: basePayment,
+    config,
+    now: new Date('2026-09-19T01:00:00.000Z'),
+  });
+  assert.equal(r.checks.date.pass, true, JSON.stringify(r.checks.date));
+  assert.equal(r.verdict, 'pass', JSON.stringify(r.issues));
+});
+
 test('evaluateReceipt - destinatario ajeno -> reject', () => {
   const r = evaluateReceipt({
     extracted: { ...goodExtract, recipientAlias: 'otra.cuenta.mp', recipientName: 'Otro Titular' },

@@ -36,24 +36,59 @@ export function dniFromTaxId(taxId) {
   return null;
 }
 
-const startOfDay = (d) => {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-};
+// Argentina es UTC-3 fijo todo el año (no tiene horario de verano), así que
+// alcanza con un offset constante — nada de cálculos de DST.
+const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * "Día calendario" de un instante o fecha, pero en Argentina — NO en el
+ * huso horario del proceso de Node (que en el servidor real corre en UTC).
+ * Devuelve un valor comparable (epoch de la medianoche UTC de ese Y-M-D):
+ * es solo una etiqueta de día, no un instante real, pero sirve para
+ * comparar "mismo día ART o no" sin que importe en qué TZ corre el server.
+ *
+ * Bug real que esto arregla (2026-09-18): un pedido hecho a las 21:52 hora
+ * argentina cae en UTC ya del día siguiente (00:52 UTC). Con
+ * `x.setHours(0,0,0,0)` en un server que corre en UTC, "el día del pedido"
+ * se calculaba mal (un día adelantado), así que un comprobante fechado
+ * correctamente el mismo día ART (como lo imprime el banco, en hora local)
+ * quedaba marcado como "anterior a la compra" y se rechazaba un pago válido.
+ */
+function arCalendarDay(d) {
+  const shifted = new Date(d.getTime() - AR_OFFSET_MS);
+  return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+}
 
 export function parseReceiptDate(input) {
   if (!input) return null;
   const s = String(input).trim();
 
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  // Fecha "pelada" (sin hora): la tratamos como medianoche en ARGENTINA de
+  // ese día (no medianoche en el huso horario del server) — así, más abajo,
+  // `arCalendarDay` la puede tratar igual que a cualquier otro instante real.
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + AR_OFFSET_MS);
 
+  m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+  if (m) {
+    let [, d, mo, y] = m.map(Number);
+    if (y < 100) y += 2000;
+    return new Date(Date.UTC(y, mo - 1, d) + AR_OFFSET_MS);
+  }
+
+  // Con hora incluida (ISO completo, o lo que el string traiga): dejamos que
+  // el parser nativo lo resuelva a un instante real.
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + AR_OFFSET_MS);
+  }
   m = s.match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/);
   if (m) {
     let [, d, mo, y] = m.map(Number);
     if (y < 100) y += 2000;
-    return new Date(y, mo - 1, d);
+    return new Date(Date.UTC(y, mo - 1, d) + AR_OFFSET_MS);
   }
   const parsed = new Date(s);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -134,10 +169,17 @@ export function evaluateReceipt({ extracted, order, user, payment, config, now =
   };
 
   // --- 5. Fecha ---
+  // Comparamos por DÍA CALENDARIO EN ARGENTINA (arCalendarDay), no por el
+  // huso horario del server: un pedido hecho a la noche (21hs+ ART) cae en
+  // UTC ya del día siguiente, y comparar eso contra la fecha del
+  // comprobante (que el banco imprime en hora local) sin este ajuste
+  // rechazaba pagos válidos por "fecha anterior" cuando en realidad el
+  // comprobante era del mismo día. Ver [[receipt-verification]].
   const date = parseReceiptDate(e.dateIso || e.dateText);
-  const reservedAt = startOfDay(order.createdAt);
+  const reservedDay = arCalendarDay(new Date(order.createdAt));
+  const dateDay = date && arCalendarDay(date);
   const tooOld = config.maxAgeDays && date && now - date > config.maxAgeDays * 86400000;
-  const beforeReserve = date && date < reservedAt;
+  const beforeReserve = dateDay != null && dateDay < reservedDay;
   checks.date = {
     pass: Boolean(date) && !beforeReserve && !tooOld,
     hard: Boolean(beforeReserve),
