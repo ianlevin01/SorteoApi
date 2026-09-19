@@ -131,41 +131,62 @@ export function evaluateReceipt({ extracted, order, user, payment, config, now =
           : `El monto transferido ($${got.toLocaleString('es-AR')}) no coincide con el total ($${want.toLocaleString('es-AR')}).`,
   };
 
+  const buyerName = `${user.firstName} ${user.lastName}`;
+
   // --- 3. Destinatario = nuestra cuenta ---
   const aliasOk = e.recipientAlias && payment.alias && accountKey(e.recipientAlias) === accountKey(payment.alias);
   const cbuOk = e.recipientCbu && payment.cbu && accountKey(e.recipientCbu) === accountKey(payment.cbu);
   const recipientNameOk = e.recipientName && payment.holder && nameMatches(e.recipientName, payment.holder);
   const readRecipient = Boolean(e.recipientAlias || e.recipientCbu || e.recipientName);
-  checks.recipient = {
-    pass: Boolean(aliasOk || cbuOk || recipientNameOk),
-    hard: readRecipient && !aliasOk && !cbuOk && !recipientNameOk,
-    detail:
-      aliasOk || cbuOk
-        ? 'La transferencia fue a nuestra cuenta.'
-        : recipientNameOk
-          ? 'El destinatario coincide con el titular de nuestra cuenta.'
-          : readRecipient
-            ? 'La transferencia no fue a la cuenta indicada.'
-            : 'No se pudo confirmar el destinatario de la transferencia.',
-  };
 
   // --- 4. Emisor = titular de la cuenta del usuario ---
-  const buyerName = `${user.firstName} ${user.lastName}`;
   const senderNameOk = e.senderName && nameMatches(e.senderName, buyerName);
   const senderDni = dniFromTaxId(e.senderTaxId);
   const senderDniOk = senderDni && senderDni === String(Number(user.dni));
   const senderDniMismatch = Boolean(senderDni && !senderDniOk);
   const senderNameMismatch = Boolean(e.senderName && !senderNameOk && !senderDniOk);
+
+  // --- Emisor/receptor invertidos: falla de lectura conocida ---
+  // El modelo a veces confunde quién manda la plata con quién la recibe
+  // (layouts como el de Mercado Pago, con el destinatario destacado arriba
+  // y otro bloque de cuenta/CUIT más abajo cerca de otro nombre). Señal
+  // fuerte de que pasó esto: lo que leyó como "emisor" coincide con
+  // NUESTRA propia cuenta, Y lo que leyó como "receptor" coincide con el
+  // propio comprador — ahí es mucho más probable que esté todo bien pero
+  // invertido, que un pago realmente ajeno. En ese caso no lo rechazamos
+  // en automático (sería rechazar un pago que probablemente sea válido):
+  // se manda a revisión manual, nunca a 'reject' ni a 'pass' directo.
+  const senderLooksLikeUs = Boolean(e.senderName && payment.holder && nameMatches(e.senderName, payment.holder));
+  const recipientLooksLikeBuyer = Boolean(e.recipientName && nameMatches(e.recipientName, buyerName));
+  const probablySwapped = senderLooksLikeUs && recipientLooksLikeBuyer;
+
+  checks.recipient = {
+    pass: Boolean(aliasOk || cbuOk || recipientNameOk),
+    hard: readRecipient && !aliasOk && !cbuOk && !recipientNameOk && !probablySwapped,
+    detail:
+      aliasOk || cbuOk
+        ? 'La transferencia fue a nuestra cuenta.'
+        : recipientNameOk
+          ? 'El destinatario coincide con el titular de nuestra cuenta.'
+          : probablySwapped
+            ? 'Los datos de emisor y receptor podrían estar invertidos en la lectura automática — revisar a mano.'
+            : readRecipient
+              ? 'La transferencia no fue a la cuenta indicada.'
+              : 'No se pudo confirmar el destinatario de la transferencia.',
+  };
+
   checks.sender = {
     pass: Boolean(senderNameOk || senderDniOk) && !senderDniMismatch,
-    hard: senderDniMismatch || senderNameMismatch,
-    detail: senderDniMismatch
-      ? 'El DNI/CUIL de la cuenta que hizo la transferencia no coincide con el de tu cuenta.'
-      : senderNameOk || senderDniOk
-        ? 'La transferencia salió de una cuenta a tu nombre.'
-        : e.senderName
-          ? `La transferencia salió de una cuenta a nombre de "${e.senderName}", que no coincide con tu cuenta.`
-          : 'No se pudo confirmar que la transferencia haya salido de tu cuenta.',
+    hard: (senderDniMismatch || senderNameMismatch) && !probablySwapped,
+    detail: probablySwapped
+      ? 'Los datos de emisor y receptor podrían estar invertidos en la lectura automática — revisar a mano.'
+      : senderDniMismatch
+        ? 'El DNI/CUIL de la cuenta que hizo la transferencia no coincide con el de tu cuenta.'
+        : senderNameOk || senderDniOk
+          ? 'La transferencia salió de una cuenta a tu nombre.'
+          : e.senderName
+            ? `La transferencia salió de una cuenta a nombre de "${e.senderName}", que no coincide con tu cuenta.`
+            : 'No se pudo confirmar que la transferencia haya salido de tu cuenta.',
   };
 
   // --- 5. Fecha ---

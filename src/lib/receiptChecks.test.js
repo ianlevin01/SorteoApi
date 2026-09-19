@@ -142,6 +142,49 @@ test('evaluateReceipt - pedido de noche (21hs+ ART) no rechaza un comprobante de
   assert.equal(r.verdict, 'pass', JSON.stringify(r.issues));
 });
 
+test('evaluateReceipt - emisor/receptor invertidos -> review, no reject (caso real)', () => {
+  // Caso real reportado (2026-09-19, pedido de Rocío Gómez): el modelo leyó
+  // el nombre del comprador como "receptor" y el nombre del titular de
+  // nuestra cuenta como "emisor" — exactamente al revés. Antes esto
+  // rechazaba en automático un pago válido; ahora tiene que caer a
+  // revisión manual, nunca a 'reject' (y tampoco a 'pass' directo, porque
+  // seguimos sin poder confirmar los datos con certeza).
+  const r = evaluateReceipt({
+    extracted: {
+      ...goodExtract,
+      senderName: 'Roberto Oscar Cornetta', // en realidad es el titular de NUESTRA cuenta
+      senderTaxId: '20-27133484-3',
+      recipientName: 'Rocio Marina Gomez Gimenez', // en realidad es la compradora
+      recipientAlias: null,
+      recipientCbu: '0000003100011057647506',
+    },
+    order: baseOrder,
+    user: { firstName: 'Rocio', lastName: 'Gomez', dni: '36023839' },
+    payment: { ...basePayment, holder: 'Roberto Oscar Cornetta' },
+    config,
+    now: new Date('2026-09-09T15:00:00Z'),
+  });
+  assert.equal(r.verdict, 'review', JSON.stringify(r.issues));
+  assert.equal(r.checks.recipient.hard, false);
+  assert.equal(r.checks.sender.hard, false);
+});
+
+test('evaluateReceipt - emisor realmente ajeno (no invertido) sigue rechazando', () => {
+  // Control: un emisor que NO coincide ni con el comprador ni con nuestra
+  // propia cuenta (un tercero cualquiera) tiene que seguir siendo un
+  // rechazo duro — la detección de inversión no debe tapar un fraude real.
+  const r = evaluateReceipt({
+    extracted: { ...goodExtract, senderName: 'PEREZ JUAN', senderTaxId: '20-40000000-5' },
+    order: baseOrder,
+    user: baseUser,
+    payment: basePayment,
+    config,
+    now: new Date('2026-09-09T15:00:00Z'),
+  });
+  assert.equal(r.verdict, 'reject');
+  assert.equal(r.checks.sender.hard, true);
+});
+
 test('evaluateReceipt - destinatario ajeno -> reject', () => {
   const r = evaluateReceipt({
     extracted: { ...goodExtract, recipientAlias: 'otra.cuenta.mp', recipientName: 'Otro Titular' },

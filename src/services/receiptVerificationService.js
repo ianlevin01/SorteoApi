@@ -57,8 +57,25 @@ NUNCA inventes ni completes datos por contexto.
 
 - amount: importe transferido como número, sin símbolo ni separador de miles (ej: 16000).
 - currency: 'ARS', 'USD', etc.
-- recipientName / recipientAlias / recipientCbu: datos de QUIEN RECIBE el dinero.
-- senderName / senderTaxId / senderAccount: datos de QUIEN ENVÍA. senderTaxId es el CUIT/CUIL.
+- recipientName / recipientAlias / recipientCbu: datos de QUIEN RECIBE el dinero (a quién se le
+  transfirió). senderName / senderTaxId / senderAccount: datos de QUIEN ENVÍA (de la cuenta desde
+  la que salió la plata). senderTaxId es el CUIT/CUIL del emisor.
+
+  OJO, ESTO ES LO QUE MÁS SE CONFUNDE — prestá especial atención a no invertir estos dos roles:
+  · En Mercado Pago suele decir arriba de todo "Le enviaste $X a [Nombre]" o "Transferiste a
+    [Nombre]": ESE nombre es el RECIPIENT, nunca el sender, aunque después en la parte de abajo
+    del comprobante aparezcan más datos (CVU/CBU, cuenta) que a veces están agrupados de forma
+    confusa cerca de otro nombre.
+  · En bancos suele haber dos bloques separados, uno "Origen" o "Cuenta débito" (=sender) y otro
+    "Destino" o "Cuenta crédito" (=recipient) — fijate bien cuál etiqueta acompaña a cada nombre,
+    no asumas por la posición en la imagen.
+  · Regla práctica: la cuenta emisora es SIEMPRE la de la persona que hizo/mandó la transferencia
+    (normalmente coincide con el nombre de quien compró el comprobante o su titular de cuenta);
+    la receptora es la del comercio al que le llegó la plata. Si texto y CUIT/nombre de una
+    persona aparecen junto a la palabra "recibiste"/"te transfirieron"/similar en vez de
+    "enviaste"/"transferiste", esa persona es el RECEPTOR, no el emisor.
+  · Antes de responder, releé una vez más cuál nombre está pegado a cada rol — es el error más
+    común y más grave que podés cometer acá, porque invierte todo el resultado de la verificación.
 - dateText: fecha y hora tal cual aparece. dateIso: esa fecha como YYYY-MM-DD si podés.
 - operationId: número de operación / comprobante / referencia / código.
 - documentType: 'transfer_receipt' si es un comprobante de transferencia; 'other'; o 'unreadable'.
