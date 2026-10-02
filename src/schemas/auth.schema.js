@@ -32,7 +32,13 @@ export const registerSchema = {
       })
       .refine((iso) => ageInYears(iso) >= 18, 'Debés ser mayor de 18 años para participar')
       .refine((iso) => ageInYears(iso) <= 119, 'Revisá la fecha de nacimiento'),
-    email: z.string().trim().toLowerCase().email('Email inválido').max(120),
+    // Opcional: si no lo cargan no se guarda nada (ni siquiera un string
+    // vacío) para que el índice por email (sparse) no choque entre varias
+    // cuentas sin email — ver authService.register().
+    email: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : undefined),
+      z.string().email('Email inválido').max(120).optional(),
+    ),
     whatsapp: z
       .string({ required_error: 'Ingresá tu WhatsApp' })
       .transform((v) => v.replace(/\D/g, ''))

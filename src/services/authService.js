@@ -84,9 +84,13 @@ export async function register(input) {
     throw conflict('Ese DNI ya está registrado. Ingresá con tu DNI.');
   }
 
-  const emailOwner = await getUserByEmail(input.email);
-  if (emailOwner) {
-    throw conflict('Ese email ya está en uso con otro DNI.');
+  // El email es opcional: si no lo mandaron, no hay nada que chequear (el
+  // índice es sparse, así que ni siquiera queda indexado un usuario sin email).
+  if (input.email) {
+    const emailOwner = await getUserByEmail(input.email);
+    if (emailOwner) {
+      throw conflict('Ese email ya está en uso con otro DNI.');
+    }
   }
 
   const now = new Date().toISOString();
