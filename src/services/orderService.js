@@ -473,11 +473,29 @@ export async function approveOrder({ orderId, adminDni }) {
   }
 
   if (isPickOrder(order)) {
-    await confirmReservedNumbers({
-      raffleId: order.raffleId,
-      numbers: orderNumberList(order),
-      orderId,
-    }).catch(() => {});
+    const numbers = orderNumberList(order);
+    try {
+      await confirmReservedNumbers({ raffleId: order.raffleId, numbers, orderId });
+    } catch (err) {
+      // CRÍTICO: nunca tragar este error. confirmReservedNumbers es una
+      // transacción todo-o-nada sobre TODOS los números de la orden — si
+      // falla (por ejemplo porque alguno ya no está reservado a nombre de
+      // esta orden, caso típico: la reserva venció y otra persona/el admin
+      // ya tocó ese número mientras tanto), antes esto se ignoraba en
+      // silencio y la orden quedaba marcada "approved" igual, SIN que los
+      // números hubieran quedado realmente confirmados — dejándolos libres
+      // para que cualquier otra persona se los terminara llevando, como
+      // pasó de verdad (número 281, sorteo Motorola — vendido dos veces).
+      // Ahora: si no se puede confirmar, la orden NO se aprueba.
+      const reasons = err?.CancellationReasons || [];
+      const failed = numbers.filter((_, i) => reasons[i]?.Code === 'ConditionalCheckFailed');
+      console.error(`[approveOrder] no se pudieron confirmar números de ${orderId}:`, err?.message || err);
+      throw conflict(
+        failed.length
+          ? `No se pudo aprobar: el número ${failed.join(', ')} ya no está reservado a nombre de este pedido (puede que la reserva haya vencido y alguien más lo haya tomado). Revisalo antes de aprobar.`
+          : 'No se pudo aprobar: uno o más números de este pedido ya no están reservados a su nombre. Revisalo antes de aprobar.',
+      );
+    }
   }
 
   const updated = await updateOrder(orderId, {
@@ -498,14 +516,25 @@ export async function rejectOrder({ orderId, adminDni, reason }) {
   const pick = isPickOrder(order);
   const nums = pick ? orderNumberList(order) : [];
 
+  // A diferencia de confirmReservedNumbers (todo-o-nada), release/expire ya
+  // toleran por sí mismas que un número puntual no matchee más (lo saltean
+  // calladas, es normal) — así que acá sí alcanza con loguear cualquier
+  // error de verdad inesperado (red, throttling) en vez de abortar el
+  // rechazo por eso.
   if (order.status === ORDER_STATUS.APPROVED) {
     await bumpConfirmedChances(order.raffleId, -order.chances).catch(() => {});
     // El admin revierte una aprobación previa: el número vuelve a estar libre.
-    if (pick) await releaseConfirmedNumbers({ raffleId: order.raffleId, numbers: nums, orderId }).catch(() => {});
+    if (pick) {
+      await releaseConfirmedNumbers({ raffleId: order.raffleId, numbers: nums, orderId }).catch((err) =>
+        console.error(`[rejectOrder] no se pudieron liberar números de ${orderId}:`, err?.message || err),
+      );
+    }
   } else if (pick) {
     // Rechazo definitivo: recién ahora, en un estado de verdad terminal, se
     // libera el número para que otra persona lo pueda elegir.
-    await expireReservedNumbers({ raffleId: order.raffleId, numbers: nums, orderId }).catch(() => {});
+    await expireReservedNumbers({ raffleId: order.raffleId, numbers: nums, orderId }).catch((err) =>
+      console.error(`[rejectOrder] no se pudieron liberar números de ${orderId}:`, err?.message || err),
+    );
   }
 
   return updateOrder(orderId, {
